@@ -1,0 +1,6 @@
+Metadata-Version: 2.1
+Name: test-alpha
+Version: 7.0.0
+Requires-Python: >=3.8
+Requires-Dist: dep-a>=1.0
+Requires-Dist: dep-b; python_version < "3.10"

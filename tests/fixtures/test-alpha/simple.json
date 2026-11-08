@@ -1,0 +1,109 @@
+{
+  "meta": {"api-version": "1.1"},
+  "name": "test-alpha",
+  "versions": [
+    "invalid!",
+    "1!1.0.0",
+    "1.0.0+local",
+    "2.0.0",
+    "3.0.0",
+    "4.0.0",
+    "5.0.0",
+    "6.0.0",
+    "7.0.0",
+    "8.0.0",
+    "9.0.0"
+  ],
+  "files": [
+    {
+      "filename": "test_alpha-2.0.0-py3-none-any.whl",
+      "url": "https://files.example.com/test_alpha-2.0.0-py3-none-any.whl",
+      "hashes": {"sha256": "aaa222"},
+      "requires-python": ">=3.8",
+      "yanked": "security issue",
+      "core-metadata": true,
+      "data-dist-info-metadata": true,
+      "upload-time": "2024-01-01T00:00:00Z"
+    },
+    {
+      "filename": "test_alpha-3.0.0-py3-none-any.whl",
+      "url": "https://files.example.com/test_alpha-3.0.0-py3-none-any.whl",
+      "hashes": {"sha256": "aaa333"},
+      "requires-python": ">=3.8",
+      "yanked": false,
+      "core-metadata": true,
+      "data-dist-info-metadata": true,
+      "upload-time": "2027-06-01T00:00:00Z"
+    },
+    {
+      "filename": "test_alpha-4.0.0-py3-none-any.whl",
+      "url": "https://files.example.com/test_alpha-4.0.0-py3-none-any.whl",
+      "hashes": {"sha256": "aaa444"},
+      "requires-python": ">=3.13",
+      "yanked": false,
+      "core-metadata": true,
+      "data-dist-info-metadata": true,
+      "upload-time": "2024-01-01T00:00:00Z"
+    },
+    {
+      "filename": "test_alpha-5.0.0.tar.gz",
+      "url": "https://files.example.com/test_alpha-5.0.0.tar.gz",
+      "hashes": {"sha256": "aaa555"},
+      "requires-python": ">=3.8",
+      "yanked": false,
+      "core-metadata": false,
+      "data-dist-info-metadata": false,
+      "upload-time": "2024-01-01T00:00:00Z"
+    },
+    {
+      "filename": "test_alpha-6.0.0-py3-none-any.whl",
+      "url": "https://files.example.com/test_alpha-6.0.0-py3-none-any.whl",
+      "hashes": {"sha256": "aaa666"},
+      "requires-python": ">=3.8",
+      "yanked": false,
+      "core-metadata": false,
+      "data-dist-info-metadata": false,
+      "upload-time": "2024-01-01T00:00:00Z"
+    },
+    {
+      "filename": "test_alpha-7.0.0-py3-none-any.whl",
+      "url": "https://files.example.com/test_alpha-7.0.0-py3-none-any.whl",
+      "hashes": {"sha256": "aaa777"},
+      "requires-python": ">=3.8",
+      "yanked": false,
+      "core-metadata": true,
+      "data-dist-info-metadata": true,
+      "upload-time": "2024-01-01T00:00:00Z"
+    },
+    {
+      "filename": "test_alpha-7.0.0.tar.gz",
+      "url": "https://files.example.com/test_alpha-7.0.0.tar.gz",
+      "hashes": {"sha256": "bbb777"},
+      "requires-python": ">=3.8",
+      "yanked": false,
+      "core-metadata": false,
+      "data-dist-info-metadata": false,
+      "upload-time": "2024-01-01T00:00:00Z"
+    },
+    {
+      "filename": "test_alpha-8.0.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
+      "url": "https://files.example.com/test_alpha-8.0.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
+      "hashes": {"sha256": "aaa888"},
+      "requires-python": ">=3.8",
+      "yanked": false,
+      "core-metadata": true,
+      "data-dist-info-metadata": true,
+      "upload-time": "2024-01-01T00:00:00Z"
+    },
+    {
+      "filename": "test_alpha-9.0.0-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
+      "url": "https://files.example.com/test_alpha-9.0.0-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
+      "hashes": {"sha256": "aaa999"},
+      "requires-python": ">=3.8",
+      "yanked": false,
+      "core-metadata": true,
+      "data-dist-info-metadata": true,
+      "upload-time": "2024-01-01T00:00:00Z"
+    }
+  ]
+}
