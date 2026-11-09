@@ -72,3 +72,9 @@
 **Why:** sequential fetching ran at ~0.5 req/s through the proxy (boto3 ≈ 2000 versions → hours). After the change: ~1660 fetches/min (~80× faster).
 **Decisions:** rows still written in original version order (deterministic). A fetch that exhausts retries still fails the whole project, as before. Safe on one SQLite connection: single thread, each `store.put` completes between awaits.
 **Tests:** 86 total pass. **Limits:** concurrency is per project; projects are still processed one after another.
+
+## Pilot: 30 seeds through P6/P7 (2026-11-09)
+
+**Ingest:** `run_ingest --limit 30` → closure of 79 projects (78 done, 1 not_found: `requestes`), 7830 kept releases, 417 s with concurrent metadata fetch. Ingest drops: no_wheel 1382, yanked 103, after_cutoff 13, py_version 11.
+**Clean:** 3.6 s, no exceptions. 7830 releases (0 clean drops), 17300 deps, 1920 no-dep releases. Edge drops: extra_dep 22948, marker_false 5049, bad_requirement 1. Rerun gives identical tables; files == releases + clean drops; lines seen (45298) == deps + edge drops.
+**Graph:** `python -m crux.data.graph` → load 0.37 s, peak 14.3 MiB (tracemalloc), 76 packages, 27 dangling edges (`distribute` ×15 and `markerlib` ×10 are sdist-only; `requestes` ×2 is a 404 typo dep). This closes the pilot limits noted under P6/P7.
