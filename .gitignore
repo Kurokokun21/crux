@@ -1,5 +1,5 @@
 # Data (gitignored — local cache and DB)
-data/
+/data/
 
 # Python
 __pycache__/
