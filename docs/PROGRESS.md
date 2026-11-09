@@ -78,3 +78,11 @@
 **Ingest:** `run_ingest --limit 30` → closure of 79 projects (78 done, 1 not_found: `requestes`), 7830 kept releases, 417 s with concurrent metadata fetch. Ingest drops: no_wheel 1382, yanked 103, after_cutoff 13, py_version 11.
 **Clean:** 3.6 s, no exceptions. 7830 releases (0 clean drops), 17300 deps, 1920 no-dep releases. Edge drops: extra_dep 22948, marker_false 5049, bad_requirement 1. Rerun gives identical tables; files == releases + clean drops; lines seen (45298) == deps + edge drops.
 **Graph:** `python -m crux.data.graph` → load 0.37 s, peak 14.3 MiB (tracemalloc), 76 packages, 27 dangling edges (`distribute` ×15 and `markerlib` ×10 are sdist-only; `requestes` ×2 is a 404 typo dep). This closes the pilot limits noted under P6/P7.
+
+## P8: QA checks and pilot report (2026-11-09)
+
+**What exists:** `crux/data/qa.py` (`check(db_path)` → list of `(severity, check, detail)`; CLI `python -m crux.data.qa`), `tests/data/test_qa.py`, `docs/PILOT.md`.
+**Checks (errors):** non_canonical, bad_version, orphan_dep, py_excluded, duplicate, conservation_ingest (P3), conservation_release and conservation_lines (P6). **Warning:** self_dep.
+**Decisions:** each check is one SQL query. `canon`, `version_ok`, `py_ok` and `n_lines` are registered as SQLite functions, reusing packaging/parse/clean logic that SQL can't express. `conservation_lines` re-reads raw metadata, which makes it the slowest check (31 s of QA on the pilot).
+**Pilot:** cold run, 7,910 requests, 324 s ingest, 51 MB DB, QA 0 errors / 0 warnings. 5,000-seed projection ≈ 6.5 h, 3.7 GB, graph ≈ 1 GiB peak (assumptions in PILOT.md). Cross-check: 1 of 20 releases disagrees (bcdoc 0.15.0: JSON `requires_dist` null, `.metadata` has 3 lines).
+**Tests:** 13 acceptance tests; 99 total pass. **Limits:** the cross-check, eyeball and request-counting scripts live in the session scratchpad, not in the repo.
