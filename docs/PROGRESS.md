@@ -50,3 +50,18 @@
 **parse_version(s):** Version or reason code (INVALID_VERSION, EPOCH, LOCAL_VERSION).
 **Scope update:** Added "Known limitations" section for extras-on-dependency.
 **Tests:** 27 parametrized parse_dep lines, 4 specifier checks, 4 parse_metadata, 7 python_ok, 5 parse_version. 47 tests pass. 73 total tests pass.
+
+## P6: Clean (2026-11-09)
+
+**What exists:** `crux/data/clean.py` (`clean(conn)`, CLI `python -m crux.data.clean`), `tests/data/test_clean.py`.
+**Tables:** `releases(name, version, upload_time, is_prerelease, requires_python, filename, url, sha256)` and `deps(name, version, dep_name, specifier)`, both dropped and rebuilt each run. `drops` rows with stage `clean`/`edge` are rewritten; `ingest` rows kept.
+**Decisions:** Metadata from PEP 658 cache, fallback to release JSON (`requires_dist: null` → no deps). Neither cached or no Metadata-Version → `no_metadata`. Invalid Requires-Python → `bad_requirement` at stage `clean`. `deps` has no PK: one row per kept line, so lines seen == deps + edge drops exactly. `is_prerelease` uses packaging (`.dev` counts).
+**Tests:** 5 acceptance tests (idempotent, release conservation, line conservation, no-dep release present, values). 78 total pass.
+**Limits:** 30-project pilot not yet verified: ingest fetches metadata sequentially (~0.5 req/s), boto3 alone is ~2000 versions. Smoke run on partial pilot (boto3, 88 releases) cleans without exceptions.
+
+## P7: Graph API (2026-11-09)
+
+**What exists:** `crux/data/graph.py` (`Graph.load(db_path, as_of)`, `Graph.from_dict(d)`, `versions`, `deps`, `allowed`, `dangling`; CLI prints load time + tracemalloc peak), `tests/data/test_graph.py`, `tests/fixtures/toy_abc.json`.
+**from_dict format:** `{pkg: {version_str: [[dep_name, spec_str], ...]}}`. Names canonicalized on build and on query; `deps()` accepts `Version` or `str`.
+**Decisions:** One shared `Version` per release (and shared `SpecifierSet` per spec string); `allowed()` = `frozenset(spec.filter(versions))` (packaging default pre-release rule), cached by `(dep, str(spec))`, misses counted in `allowed_misses`. `dangling()` = edges whose dep package has zero versions; such edges are kept. `as_of` is an aware datetime; NULL upload_time kept.
+**Tests:** 7 acceptance tests. 85 total pass. **Limits:** pilot load time/memory pending the same ingest bottleneck (partial boto3-only DB: 0.01s, 0.2 MiB).
