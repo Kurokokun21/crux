@@ -50,3 +50,46 @@
 **parse_version(s):** Version or reason code (INVALID_VERSION, EPOCH, LOCAL_VERSION).
 **Scope update:** Added "Known limitations" section for extras-on-dependency.
 **Tests:** 27 parametrized parse_dep lines, 4 specifier checks, 4 parse_metadata, 7 python_ok, 5 parse_version. 47 tests pass. 73 total tests pass.
+
+## P6: Clean (2026-11-09)
+
+**What exists:** `crux/data/clean.py` (`clean(conn)`, CLI `python -m crux.data.clean`), `tests/data/test_clean.py`.
+**Tables:** `releases(name, version, upload_time, is_prerelease, requires_python, filename, url, sha256)` and `deps(name, version, dep_name, specifier)`, both dropped and rebuilt each run. `drops` rows with stage `clean`/`edge` are rewritten; `ingest` rows kept.
+**Decisions:** Metadata from PEP 658 cache, fallback to release JSON (`requires_dist: null` → no deps). Neither cached or no Metadata-Version → `no_metadata`. Invalid Requires-Python → `bad_requirement` at stage `clean`. `deps` has no PK: one row per kept line, so lines seen == deps + edge drops exactly. `is_prerelease` uses packaging (`.dev` counts).
+**Tests:** 5 acceptance tests (idempotent, release conservation, line conservation, no-dep release present, values). 78 total pass.
+**Limits:** 30-project pilot not yet verified: ingest fetches metadata sequentially (~0.5 req/s), boto3 alone is ~2000 versions. Smoke run on partial pilot (boto3, 88 releases) cleans without exceptions.
+
+## P7: Graph API (2026-11-09)
+
+**What exists:** `crux/data/graph.py` (`Graph.load(db_path, as_of)`, `Graph.from_dict(d)`, `versions`, `deps`, `allowed`, `dangling`; CLI prints load time + tracemalloc peak), `tests/data/test_graph.py`, `tests/fixtures/toy_abc.json`.
+**from_dict format:** `{pkg: {version_str: [[dep_name, spec_str], ...]}}`. Names canonicalized on build and on query; `deps()` accepts `Version` or `str`.
+**Decisions:** One shared `Version` per release (and shared `SpecifierSet` per spec string); `allowed()` = `frozenset(spec.filter(versions))` (packaging default pre-release rule), cached by `(dep, str(spec))`, misses counted in `allowed_misses`. `dangling()` = edges whose dep package has zero versions; such edges are kept. `as_of` is an aware datetime; NULL upload_time kept.
+**Tests:** 7 acceptance tests. 85 total pass. **Limits:** pilot load time/memory pending the same ingest bottleneck (partial boto3-only DB: 0.01s, 0.2 MiB).
+
+## P7b: Concurrent metadata fetch in ingest (2026-11-09)
+
+**What changed:** `ingest_project` now fetches metadata for all kept versions of a project with `asyncio.gather`, bounded by the shared semaphore (default 10), instead of one-at-a-time. New test `test_metadata_fetched_concurrently` in `tests/data/test_ingest.py`.
+**Why:** sequential fetching ran at ~0.5 req/s through the proxy (boto3 ≈ 2000 versions → hours). After the change: ~1660 fetches/min (~80× faster).
+**Decisions:** rows still written in original version order (deterministic). A fetch that exhausts retries still fails the whole project, as before. Safe on one SQLite connection: single thread, each `store.put` completes between awaits.
+**Tests:** 86 total pass. **Limits:** concurrency is per project; projects are still processed one after another.
+
+## Pilot: 30 seeds through P6/P7 (2026-11-09)
+
+**Ingest:** `run_ingest --limit 30` → closure of 79 projects (78 done, 1 not_found: `requestes`), 7830 kept releases, 417 s with concurrent metadata fetch. Ingest drops: no_wheel 1382, yanked 103, after_cutoff 13, py_version 11.
+**Clean:** 3.6 s, no exceptions. 7830 releases (0 clean drops), 17300 deps, 1920 no-dep releases. Edge drops: extra_dep 22948, marker_false 5049, bad_requirement 1. Rerun gives identical tables; files == releases + clean drops; lines seen (45298) == deps + edge drops.
+**Graph:** `python -m crux.data.graph` → load 0.37 s, peak 14.3 MiB (tracemalloc), 76 packages, 27 dangling edges (`distribute` ×15 and `markerlib` ×10 are sdist-only; `requestes` ×2 is a 404 typo dep). This closes the pilot limits noted under P6/P7.
+
+## P8: QA checks and pilot report (2026-11-09)
+
+**What exists:** `crux/data/qa.py` (`check(db_path)` → list of `(severity, check, detail)`; CLI `python -m crux.data.qa`), `tests/data/test_qa.py`, `docs/PILOT.md`.
+**Checks (errors):** non_canonical, bad_version, orphan_dep, py_excluded, duplicate, conservation_ingest (P3), conservation_release and conservation_lines (P6). **Warning:** self_dep.
+**Decisions:** each check is one SQL query. `canon`, `version_ok`, `py_ok` and `n_lines` are registered as SQLite functions, reusing packaging/parse/clean logic that SQL can't express. `conservation_lines` re-reads raw metadata, which makes it the slowest check (31 s of QA on the pilot).
+**Pilot:** cold run, 7,910 requests, 324 s ingest, 51 MB DB, QA 0 errors / 0 warnings. 5,000-seed projection ≈ 6.5 h, 3.7 GB, graph ≈ 1 GiB peak (assumptions in PILOT.md). Cross-check: 1 of 20 releases disagrees (bcdoc 0.15.0: JSON `requires_dist` null, `.metadata` has 3 lines).
+**Tests:** 13 acceptance tests; 99 total pass. **Limits:** the cross-check, eyeball and request-counting scripts live in the session scratchpad, not in the repo.
+
+## FINALIZE: README (2026-11-09)
+
+**What exists:** `README.md` (199 lines): what this is, quick start, data model, scope/reason codes, Graph API example with real output, pilot results, known limitations, reproducing the snapshot, tests, layout.
+**Verification:** every `bash` block was extracted from the README and run from the repo root: all exit 0, and the Graph example output matches the README byte for byte. Numbers come from SCOPE/SPIKE/PILOT/PROGRESS, code constants, or those runs.
+**TODOs left in README:** full 5,000-seed run counts; committing `snapshots/`.
+**Newly noted limits:** `pip install -e .` fails (flat layout: `data`, `crux`, `snapshots` found); JSON fallback only on failed `.metadata` fetch, not on `.metadata` without Requires-Dist (SPIKE recommended the latter); placeholder contact in USER_AGENT. Not fixed.
