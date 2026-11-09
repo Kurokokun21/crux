@@ -65,3 +65,10 @@
 **from_dict format:** `{pkg: {version_str: [[dep_name, spec_str], ...]}}`. Names canonicalized on build and on query; `deps()` accepts `Version` or `str`.
 **Decisions:** One shared `Version` per release (and shared `SpecifierSet` per spec string); `allowed()` = `frozenset(spec.filter(versions))` (packaging default pre-release rule), cached by `(dep, str(spec))`, misses counted in `allowed_misses`. `dangling()` = edges whose dep package has zero versions; such edges are kept. `as_of` is an aware datetime; NULL upload_time kept.
 **Tests:** 7 acceptance tests. 85 total pass. **Limits:** pilot load time/memory pending the same ingest bottleneck (partial boto3-only DB: 0.01s, 0.2 MiB).
+
+## P7b: Concurrent metadata fetch in ingest (2026-11-09)
+
+**What changed:** `ingest_project` now fetches metadata for all kept versions of a project with `asyncio.gather`, bounded by the shared semaphore (default 10), instead of one-at-a-time. New test `test_metadata_fetched_concurrently` in `tests/data/test_ingest.py`.
+**Why:** sequential fetching ran at ~0.5 req/s through the proxy (boto3 ≈ 2000 versions → hours). After the change: ~1660 fetches/min (~80× faster).
+**Decisions:** rows still written in original version order (deterministic). A fetch that exhausts retries still fails the whole project, as before. Safe on one SQLite connection: single thread, each `store.put` completes between awaits.
+**Tests:** 86 total pass. **Limits:** concurrency is per project; projects are still processed one after another.

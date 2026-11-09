@@ -188,3 +188,34 @@ def test_second_run_zero_http():
             )
 
     asyncio.run(_run())
+
+
+# ── 5. Metadata fetches run concurrently ─────────────────────────────
+
+def test_metadata_fetched_concurrently():
+    responses = _load_responses("test-alpha")
+    state = {"in_flight": 0, "max": 0}
+
+    async def handler(request):
+        url = str(request.url)
+        state["in_flight"] += 1
+        state["max"] = max(state["max"], state["in_flight"])
+        if url.endswith(".metadata"):
+            await asyncio.sleep(0.01)
+        state["in_flight"] -= 1
+        if url in responses:
+            s, b = responses[url]
+            return httpx.Response(s, content=b)
+        return httpx.Response(404)
+
+    async def _run():
+        transport = httpx.MockTransport(handler)
+        async with httpx.AsyncClient(transport=transport) as client:
+            conn = _make_conn()
+            result = await ingest_project(
+                client, "test-alpha", conn, _sleep=_noop_sleep,
+            )
+            assert result["n_kept"] == 3
+        assert state["max"] >= 2, "metadata fetches ran sequentially"
+
+    asyncio.run(_run())

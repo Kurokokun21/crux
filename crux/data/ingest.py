@@ -281,13 +281,16 @@ async def ingest_project(client, name, conn, *, semaphore=None,
         kept.sort(key=lambda x: x[0], reverse=True)
         kept = kept[: MAX_VERSIONS_PER_PROJECT]
 
-    # 4. fetch metadata
+    # 4. fetch metadata concurrently (bounded by the shared semaphore)
+    if semaphore is None:
+        semaphore = asyncio.Semaphore(10)
+    oks = await asyncio.gather(*(
+        _fetch_metadata(client, conn, name, ver_str, picked,
+                        semaphore=semaphore, _sleep=_sleep)
+        for _, ver_str, picked in kept
+    ))
     final_kept = []
-    for ver, ver_str, picked in kept:
-        ok = await _fetch_metadata(
-            client, conn, name, ver_str, picked,
-            semaphore=semaphore, _sleep=_sleep,
-        )
+    for (ver, ver_str, picked), ok in zip(kept, oks):
         if not ok:
             drops.append((NO_METADATA, name, ver_str, picked["filename"]))
             continue
