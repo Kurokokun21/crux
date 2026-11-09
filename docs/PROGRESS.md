@@ -86,3 +86,10 @@
 **Decisions:** each check is one SQL query. `canon`, `version_ok`, `py_ok` and `n_lines` are registered as SQLite functions, reusing packaging/parse/clean logic that SQL can't express. `conservation_lines` re-reads raw metadata, which makes it the slowest check (31 s of QA on the pilot).
 **Pilot:** cold run, 7,910 requests, 324 s ingest, 51 MB DB, QA 0 errors / 0 warnings. 5,000-seed projection ≈ 6.5 h, 3.7 GB, graph ≈ 1 GiB peak (assumptions in PILOT.md). Cross-check: 1 of 20 releases disagrees (bcdoc 0.15.0: JSON `requires_dist` null, `.metadata` has 3 lines).
 **Tests:** 13 acceptance tests; 99 total pass. **Limits:** the cross-check, eyeball and request-counting scripts live in the session scratchpad, not in the repo.
+
+## FINALIZE: README (2026-11-09)
+
+**What exists:** `README.md` (199 lines): what this is, quick start, data model, scope/reason codes, Graph API example with real output, pilot results, known limitations, reproducing the snapshot, tests, layout.
+**Verification:** every `bash` block was extracted from the README and run from the repo root: all exit 0, and the Graph example output matches the README byte for byte. Numbers come from SCOPE/SPIKE/PILOT/PROGRESS, code constants, or those runs.
+**TODOs left in README:** full 5,000-seed run counts; committing `snapshots/`.
+**Newly noted limits:** `pip install -e .` fails (flat layout: `data`, `crux`, `snapshots` found); JSON fallback only on failed `.metadata` fetch, not on `.metadata` without Requires-Dist (SPIKE recommended the latter); placeholder contact in USER_AGENT. Not fixed.
