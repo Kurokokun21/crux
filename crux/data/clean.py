@@ -41,6 +41,15 @@ def _ensure_tables(conn):
             detail  TEXT
         );
         DELETE FROM drops WHERE stage IN ('clean', 'edge');
+
+        -- Indexes. `deps` has no primary key by design (one row per kept
+        -- Requires-Dist line), and the QA conservation checks look rows up by
+        -- (name, version), so without these the correlated subqueries in qa.py
+        -- scan the whole table once per release -- quadratic in database size.
+        -- deps(dep_name) is for the solver's reverse lookups.
+        CREATE INDEX IF NOT EXISTS idx_deps_name_version ON deps (name, version);
+        CREATE INDEX IF NOT EXISTS idx_deps_dep_name     ON deps (dep_name);
+        CREATE INDEX IF NOT EXISTS idx_drops_lookup      ON drops (stage, name, version);
     """)
 
 
