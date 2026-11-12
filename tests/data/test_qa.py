@@ -28,7 +28,9 @@ def _make_db(tmp_path):
         store.put(conn, BASE + fn + ".metadata", 200,
                   f"Metadata-Version: 2.1\nName: {name}\n{extra}".encode())
     conn.execute("INSERT INTO drops VALUES ('ingest', 'yanked', 'a', '0.1', '')")
-    conn.executemany("INSERT INTO projects VALUES (?, 'done', NULL, ?, ?)",
+    conn.executemany("INSERT INTO projects"
+                     " (name, status, last_serial, n_seen, n_kept)"
+                     " VALUES (?, 'done', NULL, ?, ?)",
                      [("a", 3, 2), ("b", 1, 1)])
     conn.commit()
     clean(conn)
@@ -87,3 +89,29 @@ def test_self_dependency_is_warning_only(tmp_path):
     out = check(path)
     assert ("warning", "self_dep", "a 1.0") in out
     assert all(sev == "warning" for sev, _, _ in out)
+
+
+def test_version_collision_detected(tmp_path):
+    """"2.0" and "2.0.0" are different rows but the same PEP 440 version."""
+    path, conn = _make_db(tmp_path)
+    # same row as a 2.0, but spelled "2.0.0" -- equal under PEP 440
+    row = conn.execute(
+        "SELECT * FROM releases WHERE name = 'a' AND version = '2.0'"
+    ).fetchone()
+    conn.execute("INSERT INTO releases VALUES (?, '2.0.0', ?, ?, ?, ?, ?, ?)",
+                 (row[0],) + tuple(row[2:]))
+    conn.commit()
+    assert "version_collision" in _errors(path)
+
+
+def test_uncached_metadata_is_reported_not_crashed(tmp_path):
+    """A release with no cached metadata must be reported, not blow up QA."""
+    path, conn = _make_db(tmp_path)
+    conn.execute(
+        "INSERT INTO releases"
+        " (name, version, upload_time, is_prerelease, requires_python,"
+        "  filename, url, sha256)"
+        " VALUES ('b', '9.9', NULL, 0, NULL, 'f', 'no://cache', 's')")
+    conn.commit()
+    out = check(path)            # must not raise
+    assert "conservation_lines" in {c for _, c, _ in out}

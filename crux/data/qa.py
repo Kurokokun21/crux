@@ -67,6 +67,13 @@ _CHECKS = [
      "   WHERE d.name = r.name AND d.version = r.version)"
      " + (SELECT COUNT(*) FROM drops d WHERE d.stage = 'edge'"
      "   AND d.name = r.name AND d.version = r.version)"),
+    # Two distinct version STRINGS that are equal under PEP 440 (e.g. "1.0"
+    # and "1.0.0") are separate rows here, because `releases` is keyed on the
+    # string -- but graph.py keys on the Version object, so they would
+    # collapse into one node with merged dependency edges.
+    ("error", "version_collision",
+     "SELECT name || ': ' || GROUP_CONCAT(version) FROM releases"
+     " GROUP BY name, norm_version(version) HAVING COUNT(*) > 1"),
     ("warning", "self_dep",
      "SELECT DISTINCT name || ' ' || version FROM deps WHERE dep_name = name"),
 ]
@@ -80,6 +87,46 @@ def _py_ok(spec):
     return python_ok(spec) is True
 
 
+def _n_lines(conn, name, version, url):
+    """Requires-Dist line count, or -1 if the metadata is not cached.
+
+    Returning -1 makes conservation_lines report the release instead of
+    letting the ValueError surface as an opaque "user-defined function
+    raised exception" that aborts every remaining check.
+    """
+    try:
+        return len(_load_metadata(conn, name, version, url)[1])
+    except (ValueError, KeyError, TypeError):
+        return -1
+
+
+def _norm_version(v):
+    """A key that is equal exactly when two version strings are PEP 440-equal.
+
+    str(Version(...)) will not do: it keeps the release segment as written,
+    so str(Version("2.0.0")) == "2.0.0" != "2.0" even though the two compare
+    equal.  Trailing zeros in the release segment are therefore stripped.
+    Unparseable versions key on themselves (bad_version reports those).
+    """
+    parsed = parse_version(v)
+    if isinstance(parsed, str):
+        return v
+    rel = list(parsed.release)
+    while len(rel) > 1 and rel[-1] == 0:
+        rel.pop()
+    key = f"{parsed.epoch}!" if parsed.epoch else ""
+    key += ".".join(str(n) for n in rel)
+    if parsed.pre is not None:
+        key += "".join(str(x) for x in parsed.pre)
+    if parsed.post is not None:
+        key += f".post{parsed.post}"
+    if parsed.dev is not None:
+        key += f".dev{parsed.dev}"
+    if parsed.local:
+        key += f"+{parsed.local}"
+    return key
+
+
 def check(db_path):
     """Return a list of (severity, check, detail) violations."""
     conn = sqlite3.connect(db_path)
@@ -87,7 +134,8 @@ def check(db_path):
     conn.create_function("version_ok", 1, _version_ok, deterministic=True)
     conn.create_function("py_ok", 1, _py_ok, deterministic=True)
     conn.create_function(
-        "n_lines", 3, lambda n, v, u: len(_load_metadata(conn, n, v, u)[1]))
+        "norm_version", 1, _norm_version, deterministic=True)
+    conn.create_function("n_lines", 3, lambda n, v, u: _n_lines(conn, n, v, u))
     try:
         return [(sev, name, detail)
                 for sev, name, sql in _CHECKS
