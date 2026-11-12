@@ -93,3 +93,84 @@
 **Verification:** every `bash` block was extracted from the README and run from the repo root: all exit 0, and the Graph example output matches the README byte for byte. Numbers come from SCOPE/SPIKE/PILOT/PROGRESS, code constants, or those runs.
 **TODOs left in README:** full 5,000-seed run counts; committing `snapshots/`.
 **Newly noted limits:** `pip install -e .` fails (flat layout: `data`, `crux`, `snapshots` found); JSON fallback only on failed `.metadata` fetch, not on `.metadata` without Requires-Dist (SPIKE recommended the latter); placeholder contact in USER_AGENT. Not fixed.
+
+## P9: Handover prep for the resolver-engine team (2026-11-10)
+
+**What exists:** `docs/HANDOVER.md`; additive Graph API (`candidates`,
+`dependents`, `collisions`); indexes in `clean`; error detail in `run_ingest`;
+`version_collision` QA check; README updates.
+
+**Fixed:**
+- `pip install -e .` now works (`[tool.setuptools] packages` in
+  `pyproject.toml`). Flat-layout autodiscovery was finding top-level `data`
+  and `snapshots` and refusing to build, so the solver team could not install
+  this as a library. Quick start now uses `pip install -e ".[dev]"`.
+- **Three missing indexes** on `deps(name, version)`, `deps(dep_name)` and
+  `drops(stage, name, version)`. `deps` has no primary key, so the correlated
+  subqueries in `conservation_lines` / `conservation_release` scanned the whole
+  table once per release. Measured on a synthetic database of the pilot's shape
+  (7,830 releases, 2.2 deps + 3.6 edge drops per release), that query takes
+  **23.2 s without indexes and 0.018 s with them**, and doubling the data
+  multiplies the time by about 4. So the QA cost is quadratic, not linear, and
+  it is the indexes rather than `conservation_lines` re-reading metadata that
+  dominated the pilot's 31 s. `docs/PILOT.md` assumption 4 is wrong as written
+  and the 5,000-seed QA projection of 37 min cannot be reached without these
+  indexes. **Still to do:** re-run `qa` on a real pilot DB and replace the
+  projection with a measured number.
+- **Ingest errors are now diagnosable.** `run_ingest` caught `Exception as exc`,
+  marked the project `error` and discarded `exc`. A 6.5-hour run could leave
+  projects unexplainably failed. The reason is now stored in a new
+  `projects.detail` column (with a migration for pre-existing databases) and
+  the traceback printed to stderr.
+- **`qa.check` no longer aborts** when a release's metadata is missing from the
+  cache. `n_lines` raised through SQLite as an opaque "user-defined function
+  raised exception", killing every remaining check; it now returns -1 so
+  `conservation_lines` reports the release instead.
+
+**Added to the Graph API (additive; nothing existing changed):**
+- `candidates(dep, spec) -> tuple[Version, ...]`, newest first, sharing
+  `allowed()`'s cache. `allowed()` returns an unordered frozenset, so picking
+  the newest matching version previously meant scanning every version of the
+  package (~2,000 for boto3) on every call in the solver's hot loop.
+- `dependents(dep) -> tuple[(pkg, Version, SpecifierSet), ...]`, the reverse of
+  `deps()`, for conflict analysis and failure explanation. Index built lazily
+  on first call so `load()` is unaffected.
+- `allowed()` and `candidates()` accept a plain string as well as a
+  `SpecifierSet` (`deps()` already coerced a str version).
+- `Graph.load` on a database that was never cleaned now raises a `RuntimeError`
+  naming the step to run, instead of a bare `sqlite3.OperationalError`.
+- `g.collisions` records releases whose version strings differ but are PEP
+  440-equal. `_build` keys `_deps` on the `Version` object while `releases` is
+  keyed on the string, so such releases silently collapsed into one node with
+  merged edges and a duplicated entry in `versions()`. Now recorded, printed by
+  the `graph` CLI, and checked in QA as `version_collision`. Note that
+  `str(Version("2.0.0"))` is `"2.0.0"`, so the check strips trailing release
+  zeros to build its key; verified against 15 equal/unequal version pairs.
+
+**Tests:** 12 new (ordering, string specifiers, shared cache, reverse index,
+collision detection, unprepared DB, error detail, column migration, collision
+QA check, uncached metadata). **111 total pass**, still fully offline.
+One existing test changed: `tests/data/test_qa.py` inserted into `projects`
+positionally, which broke when `detail` was added; it now names its columns.
+
+**Not done, and why:**
+- `snapshots/top5000-2026-11-01.json` is still uncommitted — the file is not in
+  the working tree, so it has to come from whoever ran the pilot. Until it is
+  committed, a fresh clone silently builds a *different* dataset.
+- The pilot `data/crux.db` is still unpublished. Attach it to a GitHub release
+  (51 MB, too big for git) with its sha256 so all three teams benchmark on the
+  same bytes.
+- The 5,000-seed run has still not been run; every full-scale number in
+  `docs/PILOT.md` remains a projection.
+- `run_ingest.py:_reqs_from_pep658` still contains the no-op
+  `return reqs if reqs or "Requires-Dist" not in text else reqs` (both branches
+  are identical). Fixing it properly is not a one-line change: for an old wheel
+  whose `.metadata` carries no `Requires-Dist`, the release JSON is not in the
+  cache either, because `ingest._fetch_metadata` only fetches JSON when the
+  `.metadata` request *fails*. A real fix has to also fetch JSON when
+  `.metadata` arrives without `Requires-Dist`, which costs extra requests
+  across the full run and changes the dataset. That is a decision for the data
+  owner, and it should be made **before** the 5,000-seed run, not after.
+- `USER_AGENT` still has the placeholder contact; it needs a real address, not
+  one invented for it.
+- No CI and no LICENSE yet.

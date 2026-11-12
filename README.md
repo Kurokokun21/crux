@@ -10,7 +10,7 @@ The target is CPython 3.12 on Linux x86-64; after ingest everything reads the lo
 Run from the repository root (paths such as `data/crux.db` are relative to it).
 
 ```bash
-pip install -q "httpx>=0.28,<1" "packaging==26.0" "pytest>=8"
+pip install -e ".[dev]"
 python -m crux.data.run_ingest --limit 30
 python -m crux.data.clean
 python -m crux.data.qa
@@ -93,6 +93,50 @@ frozenset()
 frozenset({<Version('1.0')>})
 ```
 
+### Calls added for the solver
+
+`allowed()` returns an unordered set, which is awkward in a solver's inner loop:
+picking the newest matching version means scanning every version of the package
+(about 2,000 of them for `boto3`). `candidates()` returns the same versions as an
+ordered tuple, newest first, sharing `allowed()`'s cache. `dependents()` is the
+reverse of `deps()` — which requirements constrain a package — for conflict
+analysis and failure explanation; its index is built on first use, so `load()`
+stays fast for callers that never ask for it. Both accept a `SpecifierSet` or a
+plain string.
+
+```bash
+python - <<'EOF'
+from crux.data.graph import Graph
+
+g = Graph.from_dict({
+    "app": {"1.0": [["lib", ">=1.2,<2"]]},
+    "lib": {"1.0": [], "1.2": [], "1.5": [], "2.0": [], "2.1b1": []},
+})
+print(g.candidates("lib", ">=1.2,<2"))
+print(g.candidates("lib", ""))
+print(g.dependents("lib"))
+print(g.candidates("lib", ">=1.2,<2") is g.candidates("lib", "<2,>=1.2"))
+print(g.allowed_misses, g.collisions)
+EOF
+```
+
+Output:
+
+```
+(<Version('1.5')>, <Version('1.2')>)
+(<Version('2.0')>, <Version('1.5')>, <Version('1.2')>, <Version('1.0')>)
+(('app', <Version('1.0')>, <SpecifierSet('<2,>=1.2')>),)
+True
+2 []
+```
+
+The second line shows the pre-release rule: `2.1b1` is left out of a bare
+specifier. Note that `versions()` does **not** apply that rule, so a solver
+should go through `candidates()` everywhere rather than mixing the two. Because
+`str(SpecifierSet)` is sorted, `">=1.2,<2"` and `"<2,>=1.2"` share one cache
+entry. `collisions` lists releases whose version strings are different but
+PEP 440-equal (see `docs/HANDOVER.md`); it should always be empty.
+
 `versions()` is newest first (`[]` if unknown). `allowed()` uses packaging's default pre-release
 rule and is cached by `(dep, str(spec))`. Edges to a package with no versions (here `requestes`,
 a typo in someone's metadata) are kept, and `allowed()` returns `frozenset()`.
@@ -150,8 +194,8 @@ Noticed in the code:
   (`_extract_dep_names`), separate from `parse.parse_dep` used by `clean`.
 - Only 200 and 404 responses are cached. If a request still fails after 5 attempts, that project
   is marked `error`.
-- `pip install -e .` fails (setuptools finds top-level `data`, `crux`, `snapshots`); use the line above.
 - `USER_AGENT` in `config.py` still has a placeholder contact (`crux-team@example.com`).
+  Replace it before a full run.
 
 ## Reproducing the snapshot
 
@@ -176,7 +220,7 @@ reproduced byte for byte.
 python -m pytest -q
 ```
 
-99 tests, all offline (`httpx.MockTransport`; in-memory or temp-file DBs; fixtures in `tests/fixtures/`).
+111 tests, all offline (`httpx.MockTransport`; in-memory or temp-file DBs; fixtures in `tests/fixtures/`).
 
 ## Layout
 
@@ -194,6 +238,6 @@ tests/data/              acceptance tests, one file per module
 tests/fixtures/          offline fixtures
 scripts/                 throwaway spike scripts (spike.py, spike2.py)
 snapshots/               seed list for the snapshot
-docs/                    SCOPE, SPIKE, PROGRESS, PILOT
+docs/                    SCOPE, SPIKE, PROGRESS, PILOT, HANDOVER
 data/                    local DB (gitignored)
 ```
