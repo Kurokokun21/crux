@@ -6,7 +6,9 @@ CLI: python -m crux.data.run_ingest --limit N
 import asyncio
 import json
 import os
+import sys
 import time
+import traceback
 from collections import deque
 from pathlib import Path
 
@@ -40,9 +42,16 @@ def _ensure_projects_table(conn):
             status      TEXT,
             last_serial INTEGER,
             n_seen      INTEGER,
-            n_kept      INTEGER
+            n_kept      INTEGER,
+            detail      TEXT
         );
     """)
+    # Migration: `detail` was added after the pilot, so databases created
+    # before it need the column added rather than the table recreated.
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(projects)")}
+    if "detail" not in cols:
+        conn.execute("ALTER TABLE projects ADD COLUMN detail TEXT")
+    conn.commit()
 
 
 # ── top list ─────────────────────────────────────────────────────────
@@ -262,12 +271,18 @@ async def run(*, limit=None, conn=None, client=None, semaphore=None,
             except KeyboardInterrupt:
                 raise
             except Exception as exc:
+                # Record WHY it failed.  A full run takes hours; a project
+                # marked 'error' with no detail cannot be diagnosed
+                # afterwards without re-running it.
                 stats.errors += 1
+                detail = f"{type(exc).__name__}: {exc}"[:500]
+                print(f"[error] {name}: {detail}", file=sys.stderr)
+                traceback.print_exc(file=sys.stderr)
                 conn.execute(
                     "INSERT OR REPLACE INTO projects"
-                    " (name, status, n_seen, n_kept)"
-                    " VALUES (?, ?, ?, ?)",
-                    (name, "error", 0, 0),
+                    " (name, status, n_seen, n_kept, detail)"
+                    " VALUES (?, ?, ?, ?, ?)",
+                    (name, "error", 0, 0, detail),
                 )
                 conn.commit()
 

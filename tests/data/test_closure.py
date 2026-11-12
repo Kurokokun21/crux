@@ -254,3 +254,54 @@ def test_extras_dep_not_followed():
         )
 
     asyncio.run(_run())
+
+
+# ── 5. A failing project records why it failed ───────────────────────
+
+def test_error_detail_is_recorded():
+    """status='error' is useless without the reason; store it."""
+
+    async def _boom(client, name, conn, **kw):
+        raise RuntimeError("simulated metadata explosion")
+
+    async def _run():
+        conn = _make_conn()
+        result = await run(
+            conn=conn,
+            client=None,
+            _sleep=_noop_sleep,
+            _fetch_top_list=lambda: ["a"],
+            _ingest=_boom,
+        )
+        status, detail = conn.execute(
+            "SELECT status, detail FROM projects WHERE name = 'a'"
+        ).fetchone()
+        assert status == "error"
+        assert "RuntimeError" in detail
+        assert "simulated metadata explosion" in detail
+        assert result["errors"] == 1
+
+    asyncio.run(_run())
+
+
+def test_detail_column_added_to_preexisting_db():
+    """A database created before `detail` existed is migrated, not broken."""
+    conn = store.open_db(":memory:")
+    conn.executescript("""
+        CREATE TABLE projects (
+            name        TEXT PRIMARY KEY,
+            status      TEXT,
+            last_serial INTEGER,
+            n_seen      INTEGER,
+            n_kept      INTEGER
+        );
+    """)
+    conn.execute("INSERT INTO projects VALUES ('old', 'done', NULL, 1, 1)")
+    conn.commit()
+    _ensure_projects_table(conn)
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(projects)")}
+    assert "detail" in cols
+    # the existing row survives
+    assert conn.execute(
+        "SELECT status FROM projects WHERE name = 'old'"
+    ).fetchone()[0] == "done"
