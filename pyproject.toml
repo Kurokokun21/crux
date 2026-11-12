@@ -14,5 +14,12 @@ dev = ["pytest>=8"]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
+# Explicit package list. Without this, setuptools' flat-layout autodiscovery
+# also finds the top-level `data/` and `snapshots/` directories and refuses to
+# build, so `pip install -e .` fails and the solver team cannot import crux
+# from outside the repository root.
+[tool.setuptools]
+packages = ["crux", "crux.data"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
